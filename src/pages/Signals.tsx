@@ -7,6 +7,16 @@ const SIGNAL_TYPES = ['', 'HAMBRE', 'ABANDONO', 'MUTACION', 'FUGA', 'CONFLICTO',
 const SEVERITIES = ['', 'LEVE', 'MODERADO', 'GRAVE', 'CRITICO']
 const STATUSES = ['', 'RECIBIDA', 'PROCESANDO', 'ATENDIDA']
 
+const SESSION_KEY = 'signals-feed-state'
+
+interface SavedState {
+  signals: Signal[]
+  cursor: string | null
+  hasMore: boolean
+  scrollY: number
+  filtersKey: string
+}
+
 export default function Signals() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -15,8 +25,10 @@ export default function Signals() {
   const [hasMore, setHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [initialised, setInitialised] = useState(false)
   const loadingRef = useRef(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const signalType = searchParams.get('signalType') ?? ''
   const severity = searchParams.get('severity') ?? ''
@@ -25,19 +37,37 @@ export default function Signals() {
 
   const filtersKey = `${signalType}|${severity}|${status}|${q}`
 
-  const resetFeed = useCallback(() => {
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SESSION_KEY)
+    if (saved) {
+      try {
+        const parsed: SavedState = JSON.parse(saved)
+        if (parsed.filtersKey === filtersKey) {
+          setSignals(parsed.signals)
+          setCursor(parsed.cursor)
+          setHasMore(parsed.hasMore)
+          setTimeout(() => window.scrollTo(0, parsed.scrollY), 0)
+          sessionStorage.removeItem(SESSION_KEY)
+          setInitialised(true)
+          return
+        }
+      } catch {
+        sessionStorage.removeItem(SESSION_KEY)
+      }
+    }
     setSignals([])
     setCursor(null)
     setHasMore(true)
-    setError('')
-  }, [])
-
-  useEffect(() => {
-    resetFeed()
-  }, [filtersKey, resetFeed])
+    setInitialised(true)
+  }, [filtersKey])
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !hasMore) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     loadingRef.current = true
     setLoading(true)
     setError('')
@@ -50,7 +80,7 @@ export default function Signals() {
         severity: severity || undefined,
         status: status || undefined,
         q: q || undefined,
-      })
+      }, controller.signal)
 
       setSignals((prev) => {
         const existing = new Set(prev.map((s) => s.id))
@@ -60,20 +90,24 @@ export default function Signals() {
       setCursor(res.nextCursor)
       setHasMore(res.hasMore)
     } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Object && 'response' in err
         ? (err as { response: { data: { message: string } } }).response?.data?.message || 'Error al cargar'
         : 'Error al cargar')
     } finally {
-      setLoading(false)
-      loadingRef.current = false
+      if (abortRef.current === controller) {
+        setLoading(false)
+        loadingRef.current = false
+      }
     }
   }, [cursor, hasMore, signalType, severity, status, q])
 
   useEffect(() => {
+    if (!initialised) return
     if (signals.length === 0 && hasMore) {
       loadMore()
     }
-  }, [signals.length, hasMore, loadMore])
+  }, [signals.length, hasMore, loadMore, initialised])
 
   useEffect(() => {
     const el = sentinelRef.current
@@ -91,6 +125,17 @@ export default function Signals() {
     observer.observe(el)
     return () => observer.disconnect()
   }, [hasMore, loadMore])
+
+  function goToDetail(id: string) {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      signals,
+      cursor,
+      hasMore,
+      scrollY: window.scrollY,
+      filtersKey,
+    } satisfies SavedState))
+    navigate(`/signals/${id}`)
+  }
 
   function updateParam(key: string, value: string) {
     const next = new URLSearchParams(searchParams)
@@ -154,7 +199,7 @@ export default function Signals() {
         {signals.map((s) => (
           <div
             key={s.id}
-            onClick={() => navigate(`/signals/${s.id}`)}
+            onClick={() => goToDetail(s.id)}
             className="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-750 transition border border-gray-700"
           >
             <div className="flex items-start justify-between">

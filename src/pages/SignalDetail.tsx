@@ -41,6 +41,21 @@ export default function SignalDetail() {
       setSignal(updated)
       setConfirmMsg(`Estado actualizado a ${newStatus}`)
       setTimeout(() => setConfirmMsg(''), 3000)
+
+      const saved = sessionStorage.getItem('signals-feed-state')
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed.signals) {
+            parsed.signals = parsed.signals.map((s: Signal) =>
+              s.id === updated.id ? updated : s
+            )
+            sessionStorage.setItem('signals-feed-state', JSON.stringify(parsed))
+          }
+        } catch {
+          /* ignore malformed cache */
+        }
+      }
     } catch (err: unknown) {
       setUpdateError(
         err instanceof Object && 'response' in err

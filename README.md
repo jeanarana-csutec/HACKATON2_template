@@ -1,73 +1,69 @@
-# React + TypeScript + Vite
+# TropelCare Control Room
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Hackathon frontend para **TropelCare Control Room** — consola operativa en React + TypeScript para gestionar una colonia de criaturas digitales (Tropeles).
 
-Currently, two official plugins are available:
+## Integrantes
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Jean Piere Milan Arana Chiong
+- Itta Zhair Saavedra Clavijo
+- Enrique Torres Chafloque
 
-## React Compiler
+## Instalación
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Variables de entorno
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Variable               | Descripción                    |
+|------------------------|--------------------------------|
+| `VITE_API_BASE_URL`    | URL base de la API (con /api/v1) |
+| `VITE_TEAM_CODE`       | Código del equipo (ej. TEAM-001) |
+| `VITE_EMAIL`           | Email del operador             |
+| `VITE_PASSWORD`        | Contraseña del equipo          |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Crear un archivo `.env` en la raíz del proyecto:
+
+```env
+VITE_API_BASE_URL=https://<backend-url>/api/v1
+VITE_TEAM_CODE=TEAM-0XX
+VITE_EMAIL=operator@tuckersoft.com
+VITE_PASSWORD=<password>
 ```
+
+## Comandos
+
+| Comando               | Acción                       |
+|-----------------------|------------------------------|
+| `npm run dev`         | Iniciar servidor de desarrollo |
+| `npm run build`       | Compilar para producción      |
+| `npm run typecheck`   | Verificar tipos de TypeScript |
+
+## Deploy
+
+Construir el proyecto y desplegar el directorio `dist/` en un hosting estático con SPA fallback (redirigir todas las rutas a `/index.html`).
+
+### AWS Amplify
+
+1. Conectar el repositorio en Amplify Console
+2. Amplify detecta automáticamente el `amplify.yml` configurado
+3. Configurar las variables de entorno en Amplify Console (no incluirlas en el repo)
+4. El SPA fallback se configura con una regla de redirección:
+   - Source: `</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>`
+   - Target: `/index.html`
+   - Status: `200`
+
+### Vercel / Netlify
+
+Ambos detectan Vite automáticamente. Configurar SPA fallback según la plataforma.
+
+## Decisiones técnicas
+
+- **Stack:** React 19 + TypeScript 6 + Vite 8 + React Router 7 + Axios + Tailwind CSS 4
+- **Autenticación:** JWT almacenado en `sessionStorage`, restauración con `/auth/me`
+- **Paginación de Tropeles:** Server-side con filtros sincronizados en URL. Protección contra respuestas obsoletas con flag `cancelled`
+- **Feed de Señales:** Cursor-based con `IntersectionObserver` para carga automática. Deduplicación por ID. Posición preservada en `sessionStorage` al navegar al detalle
+- **Actualización de estado:** Cache del feed sincronizado vía `sessionStorage` para reflejar cambios al volver
+- **Sector Story:** Scroll-driven animations CSS (`animation-timeline: scroll()`) con fallback basado en `IntersectionObserver`. View Transition API con fallback a navegación normal. Navegación por teclado con flechas. Soporte `prefers-reduced-motion`
+- **No se usan:** Material UI, React Query, TanStack Query, librerías de infinite scroll, `any` en respuestas de API

@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard'
 import Tropels from './pages/Tropels'
 import Signals from './pages/Signals'
 import SignalDetail from './pages/SignalDetail'
+import Sectors from './pages/Sectors'
 import SectorStory from './pages/SectorStory'
 
 export default function App() {
@@ -26,8 +27,16 @@ export default function App() {
             <Route path="/tropels" element={<Tropels />} />
             <Route path="/signals" element={<Signals />} />
             <Route path="/signals/:id" element={<SignalDetail />} />
-            <Route path="/sectors/:id/story" element={<SectorStory />} />
+            <Route path="/sectors" element={<Sectors />} />
           </Route>
+          <Route
+            path="/sectors/:id/story"
+            element={
+              <ProtectedRoute>
+                <SectorStory />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>

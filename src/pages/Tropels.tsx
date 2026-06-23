@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { Tropel } from '../types'
+import type { Tropel, Sector } from '../types'
 import { getTropels } from '../api/tropels'
+import { getSectors } from '../api/sectors'
 
 const SORT_OPTIONS = [
   { value: 'updatedAt,desc', label: 'Actualizacion (desc)' },
@@ -15,6 +16,7 @@ const VITAL_STATES = ['', 'ESTABLE', 'HAMBRIENTO', 'AGITADO', 'MUTANDO', 'CRITIC
 export default function Tropels() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [tropels, setTropels] = useState<Tropel[]>([])
+  const [sectors, setSectors] = useState<Sector[]>([])
   const [totalPages, setTotalPages] = useState(0)
   const [totalElements, setTotalElements] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -23,21 +25,32 @@ export default function Tropels() {
   const page = parseInt(searchParams.get('page') ?? '0', 10)
   const species = searchParams.get('species') ?? ''
   const vitalState = searchParams.get('vitalState') ?? ''
+  const sectorId = searchParams.get('sectorId') ?? ''
   const q = searchParams.get('q') ?? ''
   const sort = searchParams.get('sort') ?? 'updatedAt,desc'
 
   const size = 20
 
+  useEffect(() => {
+    getSectors().then((res) => setSectors(res.items)).catch(() => {})
+  }, [])
+
   const fetchTropels = useCallback(() => {
     let cancelled = false
-    const requestId = Date.now()
 
     setLoading(true)
     setError('')
 
-    getTropels({ page, size, species: species || undefined, vitalState: vitalState || undefined, q: q || undefined, sort })
+    getTropels({
+      page, size,
+      species: species || undefined,
+      vitalState: vitalState || undefined,
+      sectorId: sectorId || undefined,
+      q: q || undefined,
+      sort,
+    })
       .then((res) => {
-        if (!cancelled && requestId) {
+        if (!cancelled) {
           setTropels(res.content)
           setTotalPages(res.totalPages)
           setTotalElements(res.totalElements)
@@ -51,7 +64,7 @@ export default function Tropels() {
       })
 
     return () => { cancelled = true }
-  }, [page, species, vitalState, q, sort])
+  }, [page, species, vitalState, sectorId, q, sort])
 
   useEffect(fetchTropels, [fetchTropels])
 
@@ -103,6 +116,17 @@ export default function Tropels() {
         >
           {VITAL_STATES.map((s) => (
             <option key={s} value={s}>{s || 'Todos los estados'}</option>
+          ))}
+        </select>
+
+        <select
+          value={sectorId}
+          onChange={(e) => updateParam('sectorId', e.target.value)}
+          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded text-white text-sm"
+        >
+          <option value="">Todos los sectores</option>
+          {sectors.map((s) => (
+            <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
 
