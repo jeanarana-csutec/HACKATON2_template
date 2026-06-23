@@ -42,21 +42,9 @@ VITE_PASSWORD=<password>
 
 ## Deploy
 
-Construir el proyecto y desplegar el directorio `dist/` en un hosting estático con SPA fallback (redirigir todas las rutas a `/index.html`).
+[![Vercel](https://img.shields.io/badge/deploy-vercel-blue)](https://hackaton-2-template.vercel.app)
 
-### AWS Amplify
-
-1. Conectar el repositorio en Amplify Console
-2. Amplify detecta automáticamente el `amplify.yml` configurado
-3. Configurar las variables de entorno en Amplify Console (no incluirlas en el repo)
-4. El SPA fallback se configura con una regla de redirección:
-   - Source: `</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>`
-   - Target: `/index.html`
-   - Status: `200`
-
-### Vercel / Netlify
-
-Ambos detectan Vite automáticamente. Configurar SPA fallback según la plataforma.
+La aplicación está desplegada en Vercel: [https://hackaton-2-template.vercel.app](https://hackaton-2-template.vercel.app)
 
 ## Decisiones técnicas
 
