@@ -10,8 +10,8 @@ export interface SignalFeedParams {
   q?: string
 }
 
-export async function getSignalFeed(params: SignalFeedParams): Promise<SignalFeed> {
-  const { data } = await apiClient.get<SignalFeed>('/signals/feed', { params })
+export async function getSignalFeed(params: SignalFeedParams, signal?: AbortSignal): Promise<SignalFeed> {
+  const { data } = await apiClient.get<SignalFeed>('/signals/feed', { params, signal })
   return data
 }
 

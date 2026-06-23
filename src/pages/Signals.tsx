@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useLayoutEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import type { Signal } from '../types'
 import { getSignalFeed } from '../api/signals'
+import { feedCache } from '../store/feedCache'
 
 const SIGNAL_TYPES = ['', 'HAMBRE', 'ABANDONO', 'MUTACION', 'FUGA', 'CONFLICTO', 'REPRODUCCION_MASIVA', 'SENAL_CORRUPTA']
 const SEVERITIES = ['', 'LEVE', 'MODERADO', 'GRAVE', 'CRITICO']
@@ -10,13 +11,6 @@ const STATUSES = ['', 'RECIBIDA', 'PROCESANDO', 'ATENDIDA']
 export default function Signals() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [signals, setSignals] = useState<Signal[]>([])
-  const [cursor, setCursor] = useState<string | null>(null)
-  const [hasMore, setHasMore] = useState(true)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const loadingRef = useRef(false)
-  const sentinelRef = useRef<HTMLDivElement>(null)
 
   const signalType = searchParams.get('signalType') ?? ''
   const severity = searchParams.get('severity') ?? ''
@@ -24,61 +18,116 @@ export default function Signals() {
   const q = searchParams.get('q') ?? ''
 
   const filtersKey = `${signalType}|${severity}|${status}|${q}`
+  const cached = feedCache.get(filtersKey)
 
-  const resetFeed = useCallback(() => {
-    setSignals([])
-    setCursor(null)
-    setHasMore(true)
-    setError('')
-  }, [])
+  const [signals, setSignals] = useState<Signal[]>(cached?.signals ?? [])
+  const [cursor, setCursor] = useState<string | null>(cached?.cursor ?? null)
+  const [hasMore, setHasMore] = useState(cached ? cached.hasMore : true)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
+  const loadingRef = useRef(false)
+  const abortCtrlRef = useRef<AbortController | null>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const currentFiltersKeyRef = useRef(filtersKey)
+
+  // Keep ref up-to-date for stale request detection
   useEffect(() => {
-    resetFeed()
-  }, [filtersKey, resetFeed])
+    currentFiltersKeyRef.current = filtersKey
+  })
+
+  // Restore scroll position when returning to a cached feed
+  useLayoutEffect(() => {
+    if (cached?.scrollY) {
+      window.scrollTo(0, cached.scrollY)
+    }
+  }, []) // only on mount
+
+  // When filters change: cancel in-flight request, restore from cache or reset
+  const prevFiltersKey = useRef(filtersKey)
+  useEffect(() => {
+    if (prevFiltersKey.current === filtersKey) return
+    prevFiltersKey.current = filtersKey
+
+    abortCtrlRef.current?.abort()
+    abortCtrlRef.current = null
+    loadingRef.current = false
+    setLoading(false)
+    setError('')
+
+    const next = feedCache.get(filtersKey)
+    setSignals(next?.signals ?? [])
+    setCursor(next?.cursor ?? null)
+    setHasMore(next ? next.hasMore : true)
+  }, [filtersKey])
 
   const loadMore = useCallback(async () => {
     if (loadingRef.current || !hasMore) return
+
+    const capturedFiltersKey = currentFiltersKeyRef.current
     loadingRef.current = true
     setLoading(true)
     setError('')
 
+    const controller = new AbortController()
+    abortCtrlRef.current = controller
+
     try {
-      const res = await getSignalFeed({
-        cursor: cursor ?? undefined,
-        limit: 15,
-        signalType: signalType || undefined,
-        severity: severity || undefined,
-        status: status || undefined,
-        q: q || undefined,
-      })
+      const res = await getSignalFeed(
+        {
+          cursor: cursor ?? undefined,
+          limit: 15,
+          signalType: signalType || undefined,
+          severity: severity || undefined,
+          status: status || undefined,
+          q: q || undefined,
+        },
+        controller.signal
+      )
+
+      // Discard if filters changed while request was in flight
+      if (currentFiltersKeyRef.current !== capturedFiltersKey) return
 
       setSignals((prev) => {
         const existing = new Set(prev.map((s) => s.id))
         const newItems = res.items.filter((s) => !existing.has(s.id))
-        return [...prev, ...newItems]
+        const next = [...prev, ...newItems]
+        feedCache.set(capturedFiltersKey, {
+          signals: next,
+          cursor: res.nextCursor,
+          hasMore: res.hasMore,
+          scrollY: window.scrollY,
+        })
+        return next
       })
       setCursor(res.nextCursor)
       setHasMore(res.hasMore)
     } catch (err: unknown) {
-      setError(err instanceof Object && 'response' in err
-        ? (err as { response: { data: { message: string } } }).response?.data?.message || 'Error al cargar'
-        : 'Error al cargar')
+      if (controller.signal.aborted) return
+      setError(
+        err instanceof Object && 'response' in err
+          ? (err as { response: { data: { message: string } } }).response?.data?.message || 'Error al cargar'
+          : 'Error al cargar'
+      )
     } finally {
-      setLoading(false)
-      loadingRef.current = false
+      if (!controller.signal.aborted) {
+        setLoading(false)
+        loadingRef.current = false
+      }
     }
   }, [cursor, hasMore, signalType, severity, status, q])
 
+  // Load first page when feed is empty
   useEffect(() => {
-    if (signals.length === 0 && hasMore) {
+    if (signals.length === 0 && hasMore && !loadingRef.current) {
       loadMore()
     }
   }, [signals.length, hasMore, loadMore])
 
+  // Infinite scroll via IntersectionObserver
   useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
-
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loadingRef.current) {
@@ -87,7 +136,6 @@ export default function Signals() {
       },
       { rootMargin: '200px' }
     )
-
     observer.observe(el)
     return () => observer.disconnect()
   }, [hasMore, loadMore])
@@ -97,6 +145,16 @@ export default function Signals() {
     if (value) next.set(key, value)
     else next.delete(key)
     setSearchParams(next)
+  }
+
+  function handleSignalClick(sig: Signal) {
+    feedCache.set(filtersKey, {
+      signals,
+      cursor,
+      hasMore,
+      scrollY: window.scrollY,
+    })
+    navigate(`/signals/${sig.id}`)
   }
 
   return (
@@ -154,16 +212,16 @@ export default function Signals() {
         {signals.map((s) => (
           <div
             key={s.id}
-            onClick={() => navigate(`/signals/${s.id}`)}
-            className="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-750 transition border border-gray-700"
+            onClick={() => handleSignalClick(s)}
+            className="bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-700 motion-safe:transition border border-gray-700"
           >
             <div className="flex items-start justify-between">
-              <div>
-                <p className="font-medium">{s.tropel.name}</p>
-                <p className="text-sm text-gray-400 mt-1">{s.rawContent}</p>
+              <div className="min-w-0 mr-3">
+                <p className="font-medium truncate">{s.tropel.name}</p>
+                <p className="text-sm text-gray-400 mt-1 line-clamp-2">{s.rawContent}</p>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+              <div className="flex flex-col gap-1 shrink-0">
+                <span className={`px-2 py-0.5 rounded text-xs font-medium text-center ${
                   s.severity === 'CRITICO' ? 'bg-red-900 text-red-200' :
                   s.severity === 'GRAVE' ? 'bg-orange-900 text-orange-200' :
                   s.severity === 'MODERADO' ? 'bg-yellow-900 text-yellow-200' :
@@ -171,7 +229,7 @@ export default function Signals() {
                 }`}>
                   {s.severity}
                 </span>
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                <span className={`px-2 py-0.5 rounded text-xs font-medium text-center ${
                   s.status === 'ATENDIDA' ? 'bg-green-900 text-green-200' :
                   s.status === 'PROCESANDO' ? 'bg-blue-900 text-blue-200' :
                   'bg-gray-700 text-gray-200'
@@ -189,13 +247,13 @@ export default function Signals() {
       </div>
 
       {loading && (
-        <div className="flex justify-center py-4">
+        <div className="flex justify-center py-6">
           <p className="text-gray-400">Cargando...</p>
         </div>
       )}
 
       {!hasMore && signals.length > 0 && (
-        <p className="text-center text-gray-500 mt-4">Fin de las senales</p>
+        <p className="text-center text-gray-500 mt-4 py-4">Fin de las senales</p>
       )}
 
       <div ref={sentinelRef} className="h-4" />

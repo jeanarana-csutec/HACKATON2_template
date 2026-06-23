@@ -25,6 +25,7 @@ export default function Layout() {
               <NavLink to="/dashboard" className={linkClass}>Dashboard</NavLink>
               <NavLink to="/tropels" className={linkClass}>Tropeles</NavLink>
               <NavLink to="/signals" className={linkClass}>Senales</NavLink>
+              <NavLink to="/sectors" className={linkClass}>Sectores</NavLink>
             </nav>
           </div>
           <div className="flex items-center gap-4">

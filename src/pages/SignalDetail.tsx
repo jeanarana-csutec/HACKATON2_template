@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { Signal, SignalStatus } from '../types'
 import { getSignal, updateSignalStatus } from '../api/signals'
+import { updateSignalInAllCaches } from '../store/feedCache'
 
 export default function SignalDetail() {
   const { id } = useParams<{ id: string }>()
@@ -39,6 +40,7 @@ export default function SignalDetail() {
     try {
       const updated = await updateSignalStatus(signal.id, newStatus)
       setSignal(updated)
+      updateSignalInAllCaches(updated)
       setConfirmMsg(`Estado actualizado a ${newStatus}`)
       setTimeout(() => setConfirmMsg(''), 3000)
     } catch (err: unknown) {
